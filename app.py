@@ -57,14 +57,14 @@ def plot_lineup_stack(power, team_name: str, color: str):
         left += v
     ax.set_yticks([0])
     ax.set_yticklabels([team_name])
-    ax.set_xlabel("타순별 능력 점수 (누적 스택)")
-    ax.set_title(f"{team_name} 추천 라인업")
+    ax.set_xlabel("Lineup Order - Ability Scores (Cumulative Stack)")
+    ax.set_title(f"{team_name} Recommended Lineup")
     return fig
 
 
 def plot_win_factors(pred):
     fig, ax = plt.subplots(figsize=(8, 4))
-    labels = ["타선", "투수", "종합", "λ(득점)"]
+    labels = ["Lineup", "Pitching", "Overall", "Expected Goals"]
     a = [
         pred.power_a.lineup_strength,
         pred.power_a.pitching_strength,
@@ -84,7 +84,7 @@ def plot_win_factors(pred):
     ax.set_xticks(x)
     ax.set_xticklabels(labels)
     ax.legend()
-    ax.set_title("승률 관련 요소 (포아송 λ 포함)")
+    ax.set_title("Win Probability Factors (Including Poisson λ)")
     return fig
 
 
@@ -98,9 +98,9 @@ def plot_poisson_heatmap(pred):
             grid[i, j] = poisson_pmf(i, lam_a) * poisson_pmf(j, lam_b)
     fig, ax = plt.subplots(figsize=(6, 5))
     im = ax.imshow(grid, cmap="viridis", origin="lower")
-    ax.set_xlabel("B 득점")
-    ax.set_ylabel("A 득점")
-    ax.set_title("득점 조합 확률 (포아송)")
+    ax.set_xlabel("B Goals")
+    ax.set_ylabel("A Goals")
+    ax.set_title("Goal Combination Probabilities (Poisson)")
     plt.colorbar(im, ax=ax, fraction=0.046)
     return fig
 
@@ -108,35 +108,35 @@ def plot_poisson_heatmap(pred):
 def main():
     st.set_page_config(page_title="2026 WBC 8강 예측", layout="wide")
     st.title("2026 WBC 8강 승부예측 시스템")
-    st.caption("명세서 STEP1~6 · 포아송 · MC 10,000 · 백테스트 · (확장) 날씨·홈어웨이·수비")
+    st.caption("홈어웨이, 날씨, 부상 등 다양한 요소를 반영한 승부예측과 시뮬레이션 대시보드입니다!")
 
     bundle = get_model()
     ctx = bundle.scoring_ctx
     teams = bundle.teams
 
     with st.sidebar:
-        st.header("경기 설정")
+        st.header("Match Settings")
         ids = list(teams.keys())
         labels = {t.id: f"{t.name_ko}" for t in TEAMS_QF8}
-        id_a = st.selectbox("팀 A", ids, format_func=lambda x: labels[x], index=0)
-        id_b = st.selectbox("팀 B", ids, format_func=lambda x: labels[x], index=1)
-        home = st.selectbox("홈팀", [id_a, id_b, "neutral"], format_func=lambda x: labels.get(x, "중립"))
-        st.subheader("날씨 → 득점 → 승패")
+        id_a = st.selectbox("Team A", ids, format_func=lambda x: labels[x], index=0)
+        id_b = st.selectbox("Team B", ids, format_func=lambda x: labels[x], index=1)
+        home = st.selectbox("Home Team", [id_a, id_b, "neutral"], format_func=lambda x: labels.get(x, "Neutral"))
+        st.subheader("Weather → Goals → Outcome")
         use_api = st.checkbox("Open-Meteo API", value=False)
         if use_api:
             ht = teams[id_a if home != "neutral" else id_a]
             wmult, wnote = fetch_temperature_run_multiplier(ht.venue_lat, ht.venue_lon)
         else:
-            temp = st.slider("기온 (°C)", 5, 38, 22)
-            wind = st.slider("풍속 (km/h)", 0, 40, 8)
+            temp = st.slider("Temperature (°C)", 5, 38, 22)
+            wind = st.slider("Wind Speed (km/h)", 0, 40, 8)
             wmult, wnote = manual_weather_multiplier(temp, wind)
         st.caption(wnote)
         injured_b = st.multiselect(
-            "부상 제외 타자",
+            "Injured Batters",
             [b.name for t in TEAMS_QF8 for b in t.batters],
         )
         injured_p = st.multiselect(
-            "부상 제외 투수",
+            "Injured Pitchers",
             [p.name for t in TEAMS_QF8 for p in t.pitchers],
         )
 
@@ -167,12 +167,12 @@ def main():
 
             c1, c2, c3, c4 = st.columns(4)
             win = id_a if pred.win_prob_a >= pred.win_prob_b else id_b
-            c1.metric("예상 승자", labels[win])
-            c2.metric(labels[id_a] + " 승률", f"{pred.win_prob_a*100:.1f}%")
-            c3.metric(labels[id_b] + " 승률", f"{pred.win_prob_b*100:.1f}%")
-            c4.metric("예상 λ", f"{pred.lambda_a:.2f} : {pred.lambda_b:.2f}")
+            c1.metric("expected winner", labels[win])
+            c2.metric(labels[id_a] + " win probability", f"{pred.win_prob_a*100:.1f}%")
+            c3.metric(labels[id_b] + " win probability", f"{pred.win_prob_b*100:.1f}%")
+            c4.metric("expected λ", f"{pred.lambda_a:.2f} : {pred.lambda_b:.2f}")
 
-            st.info(f"🌤 {pred.weather_note} | 🏟 {pred.home_away_note} | 🧤 {pred.defense_note}")
+            st.info(f" 🌤 {pred.weather_note} | 🏟 {pred.home_away_note} | 🧤 {pred.defense_note}")
 
             with st.expander("League coefficient"):
                 st.dataframe(
@@ -192,13 +192,13 @@ def main():
 
             col_l, col_r = st.columns(2)
             with col_l:
-                st.subheader(f"{ta.name_ko} 라인업")
+                st.subheader(f"{ta.name_ko} lineup")
                 st.dataframe(
                     pd.DataFrame([{"batting order": s.order, "Player": s.name, "Rate": round(s.score, 1)} for s in pred.power_a.lineup]),
                     hide_index=True,
                 )
             with col_r:
-                st.subheader(f"{tb.name_ko} 라인업")
+                st.subheader(f"{tb.name_ko} lineup")
                 st.dataframe(
                     pd.DataFrame([{"batting order": s.order, "Player": s.name, "Rate": round(s.score, 1)} for s in pred.power_b.lineup]),
                     hide_index=True,
@@ -278,18 +278,18 @@ def main():
     # ── TAB 5 ──
     with tabs[4]:
         st.markdown(WORLD_CUP_STUB)
-        st.subheader("데모: 4개국 골 λ")
+        st.subheader("Demo: 4 countries goal λ")
         football = pd.DataFrame(
             {
-                "국가": ["브라질", "프랑스", "한국", "일본"],
-                "공격": [88, 85, 72, 74],
-                "수비": [82, 84, 78, 76],
-                "λ(골)": [1.65, 1.58, 1.12, 1.18],
+                "Country": ["Brazil", "France", "Korea", "Japan"],
+                "Attack": [88, 85, 72, 74],
+                "Defense": [82, 84, 78, 76],
+                "λ(Goals)": [1.65, 1.58, 1.12, 1.18],
             }
         )
         st.dataframe(football, hide_index=True)
-        st.bar_chart(football.set_index("국가")["λ(골)"])
-        st.caption("동일 포아송+MC 프레임을 xG 기반으로 교체하면 월드컵 모듈 완성됩니다.")
+        st.bar_chart(football.set_index("Country")["λ(Goals)"])
+        st.caption("Replacing the same Poisson+MC framework with an xG-based approach will complete the World Cup module.")
 
 
 if __name__ == "__main__":
