@@ -51,66 +51,41 @@ for _font in ("Malgun Gothic", "AppleGothic", "NanumGothic"):
 plt.rcParams["axes.unicode_minus"] = False
 
 
-@st.cache_resource
-def get_model():
-    return build_model()
+def _theme() -> dict:
+    light = st.get_option("theme.base") == "light"
+    return {
+        "light": light,
+        "text": "#262730" if light else "#FAFAFA",
+        "muted": "rgba(38,39,48,0.55)" if light else "rgba(250,250,250,0.55)",
+        "grid_css": "rgba(38,39,48,0.12)" if light else "rgba(250,250,250,0.10)",
+        "grid_mpl": "#d6d6d8" if light else "#3a3b45",
+        "card_bg": "rgba(38,39,48,0.04)" if light else "rgba(250,250,250,0.06)",
+        "card_border": "rgba(38,39,48,0.14)" if light else "rgba(250,250,250,0.14)",
+        "accent": "#1f77b4" if light else "#7dd3fc",
+    }
 
 
-def _show_fig(fig) -> None:
-    fig.tight_layout()
-    st.pyplot(fig, use_container_width=True)
-    plt.close(fig)
-
-
-def plot_win_prob_compare(name_a: str, name_b: str, win_a: float, win_b: float, color_a: str, color_b: str):
-    teams = [name_a, name_b]
-    probs = [win_a * 100, win_b * 100]
-    colors = [color_a, color_b]
-
-    fig, ax = plt.subplots(figsize=(8, 1.6))
-    y_pos = np.arange(len(teams))
-    bars = ax.barh(y_pos, probs, color=colors, height=0.55, edgecolor="#333", linewidth=0.4)
-    ax.set_yticks(y_pos)
-    ax.set_yticklabels(teams)
-    ax.invert_yaxis()
-    ax.set_xlim(0, 100)
-    ax.set_xlabel("승률 (%)")
-    ax.set_title("최종 승률 비교")
-    for bar, prob in zip(bars, probs):
-        ax.text(
-            bar.get_width() - 1.5,
-            bar.get_y() + bar.get_height() / 2,
-            f"{prob:.1f}%",
-            va="center",
-            ha="right",
-            color="white",
-            fontweight="bold",
-            fontsize=11,
-        )
-    _show_fig(fig)
-
-
-def render_matchup_hero(ta, tb, pred, labels, id_a, id_b):
-    """승률을 한눈에 파악할 수 있는 메인 카드."""
-    win_a = pred.win_prob_a
-    win_b = pred.win_prob_b
-    winner_id = id_a if win_a >= win_b else id_b
-    color_a = TEAM_COLORS.get(id_a, "#1f77b4")
-    color_b = TEAM_COLORS.get(id_b, "#ff4b4b")
-
+def _inject_global_css() -> None:
+    t = _theme()
     st.markdown(
         f"""
         <style>
+        [data-testid="stPyplotGlobal"] {{
+            background: transparent !important;
+        }}
+        [data-testid="stPyplotGlobal"] img {{
+            background: transparent !important;
+        }}
         .wbc-card {{
-            border: 1px solid rgba(128,128,128,0.25);
+            border: 1px solid {t["card_border"]};
             border-radius: 12px;
-            padding: 1.2rem 1.5rem;
-            background: linear-gradient(135deg, rgba(31,119,180,0.10), rgba(255,75,75,0.06));
-            margin-bottom: 0.5rem;
+            padding: 1rem 1.25rem;
+            background: {t["card_bg"]};
+            margin-bottom: 0.75rem;
         }}
         .wbc-winner {{
             font-size: 0.85rem;
-            color: #1f77b4;
+            color: {t["accent"]};
             letter-spacing: 0.04em;
             margin-bottom: 0.25rem;
         }}
@@ -131,10 +106,99 @@ def render_matchup_hero(ta, tb, pred, labels, id_a, id_b):
             justify-content: center;
             font-size: 1.1rem;
             font-weight: 700;
-            color: rgba(128,128,128,0.7);
+            color: {t["muted"]};
             padding-top: 2.5rem;
         }}
+        .wbc-bar-block {{
+            margin: 0.35rem 0 0.85rem 0;
+        }}
+        .wbc-bar-label {{
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9rem;
+            color: {t["text"]};
+            margin-bottom: 0.25rem;
+        }}
+        .wbc-bar-track {{
+            width: 100%;
+            height: 0.65rem;
+            border-radius: 999px;
+            background: {t["grid_css"]};
+            overflow: hidden;
+        }}
+        .wbc-bar-fill {{
+            height: 100%;
+            border-radius: 999px;
+            transition: width 0.15s ease;
+        }}
         </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+@st.cache_resource
+def get_model():
+    return build_model()
+
+
+def _apply_mpl_theme(fig, ax) -> None:
+    t = _theme()
+    fig.patch.set_alpha(0)
+    ax.set_facecolor("none")
+    ax.tick_params(colors=t["text"], labelsize=10)
+    ax.xaxis.label.set_color(t["text"])
+    ax.yaxis.label.set_color(t["text"])
+    ax.title.set_color(t["text"])
+    for spine in ax.spines.values():
+        spine.set_color(t["grid_mpl"])
+    ax.grid(axis="both", color=t["grid_mpl"], linestyle="-", linewidth=0.6, alpha=0.9)
+    legend = ax.get_legend()
+    if legend:
+        for text in legend.get_texts():
+            text.set_color(t["text"])
+
+
+def _show_fig(fig) -> None:
+    fig.tight_layout()
+    try:
+        st.pyplot(fig, use_container_width=True, transparent=True)
+    except TypeError:
+        st.pyplot(fig, use_container_width=True)
+    plt.close(fig)
+
+
+def render_win_prob_bars(name_a: str, name_b: str, win_a: float, win_b: float, color_a: str, color_b: str):
+    pa, pb = win_a * 100, win_b * 100
+    st.markdown(
+        f"""
+        <div class="wbc-bar-block">
+            <div class="wbc-bar-label"><span>{name_a}</span><span>{pa:.1f}%</span></div>
+            <div class="wbc-bar-track">
+                <div class="wbc-bar-fill" style="width:{pa:.1f}%; background:{color_a};"></div>
+            </div>
+        </div>
+        <div class="wbc-bar-block">
+            <div class="wbc-bar-label"><span>{name_b}</span><span>{pb:.1f}%</span></div>
+            <div class="wbc-bar-track">
+                <div class="wbc-bar-fill" style="width:{pb:.1f}%; background:{color_b};"></div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_matchup_hero(ta, tb, pred, labels, id_a, id_b):
+    """승률을 한눈에 파악할 수 있는 메인 카드."""
+    win_a = pred.win_prob_a
+    win_b = pred.win_prob_b
+    winner_id = id_a if win_a >= win_b else id_b
+    color_a = TEAM_COLORS.get(id_a, "#1f77b4")
+    color_b = TEAM_COLORS.get(id_b, "#ff4b4b")
+
+    st.markdown(
+        f"""
         <div class="wbc-card">
             <div class="wbc-winner">🏆 예상 승자 · {labels[winner_id]}</div>
         </div>
@@ -160,7 +224,8 @@ def render_matchup_hero(ta, tb, pred, labels, id_a, id_b):
         )
         st.progress(win_b, text=f"승률 {win_b * 100:.1f}%")
 
-    plot_win_prob_compare(labels[id_a], labels[id_b], win_a, win_b, color_a, color_b)
+    st.caption("최종 승률 비교")
+    render_win_prob_bars(labels[id_a], labels[id_b], win_a, win_b, color_a, color_b)
 
 
 def plot_lineup_strength(power, team_name: str, team_id: str):
@@ -170,12 +235,13 @@ def plot_lineup_strength(power, team_name: str, team_id: str):
 
     fig, ax = plt.subplots(figsize=(8, 3.5))
     y_pos = np.arange(len(names))
-    ax.barh(y_pos, vals, color=color, alpha=0.85, edgecolor="#333", linewidth=0.4)
+    ax.barh(y_pos, vals, color=color, alpha=0.88, edgecolor="none")
     ax.set_yticks(y_pos)
     ax.set_yticklabels(names)
     ax.invert_yaxis()
     ax.set_xlabel("전력 점수")
     ax.set_title(f"{team_name} 추천 라인업 전력")
+    _apply_mpl_theme(fig, ax)
     _show_fig(fig)
 
 
@@ -197,12 +263,13 @@ def plot_win_factors(pred, name_a: str, name_b: str):
     w = 0.35
 
     fig, ax = plt.subplots(figsize=(8, 4))
-    ax.bar(x - w / 2, a_vals, w, label=name_a, color="#58a6ff")
-    ax.bar(x + w / 2, b_vals, w, label=name_b, color="#f85149")
+    ax.bar(x - w / 2, a_vals, w, label=name_a, color="#58a6ff", edgecolor="none")
+    ax.bar(x + w / 2, b_vals, w, label=name_b, color="#f85149", edgecolor="none")
     ax.set_xticks(x)
     ax.set_xticklabels(labels)
-    ax.legend()
+    ax.legend(framealpha=0)
     ax.set_title("승률 요인 비교 (포아송 λ 포함)")
+    _apply_mpl_theme(fig, ax)
     _show_fig(fig)
 
 
@@ -220,14 +287,18 @@ def plot_poisson_heatmap(pred):
     ax.set_xlabel("B팀 득점")
     ax.set_ylabel("A팀 득점")
     ax.set_title("득점 조합 확률 (포아송)")
-    plt.colorbar(im, ax=ax, fraction=0.046)
+    cbar = plt.colorbar(im, ax=ax, fraction=0.046)
+    cbar.ax.yaxis.set_tick_params(color=_theme()["text"])
+    plt.setp(plt.getp(cbar.ax.axes, "yticklabels"), color=_theme()["text"])
+    _apply_mpl_theme(fig, ax)
     _show_fig(fig)
 
 
 def main():
     st.set_page_config(page_title="2026 WBC 8강 예측", page_icon="⚾", layout="wide")
+    _inject_global_css()
     st.title("⚾ 2026 WBC 8강 승부예측")
-    st.caption("팀·홈구장·날씨·부상을 반영한 포아송 기반 단판 승부 예측")
+    st.caption("사이드바 설정 변경 시 승률이 즉시 반영됩니다 · 포아송 기반 단판 예측")
 
     bundle = get_model()
     ctx = bundle.scoring_ctx
