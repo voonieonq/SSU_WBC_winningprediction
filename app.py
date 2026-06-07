@@ -4,10 +4,13 @@
 
 from __future__ import annotations
 
+import matplotlib
+
+matplotlib.use("Agg")
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
 import streamlit as st
 
 from backtest_data import ACTUAL_2026_WBC, BACKTEST_GAMES
@@ -39,32 +42,24 @@ TEAM_COLORS = {
     "cub": "#002A8F",
 }
 
-
-def _plot_theme() -> tuple[str, str]:
-    is_light = st.get_option("theme.base") == "light"
-    text = "#262730" if is_light else "#FAFAFA"
-    grid = "rgba(38,39,48,0.12)" if is_light else "rgba(250,250,250,0.08)"
-    return text, grid
-
-
-def _streamlit_plot(fig: go.Figure, height: int = 320) -> None:
-    text, grid = _plot_theme()
-    fig.update_layout(
-        height=height,
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color=text, size=13),
-        margin=dict(l=12, r=12, t=44, b=12),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-    )
-    fig.update_xaxes(gridcolor=grid, zeroline=False)
-    fig.update_yaxes(gridcolor=grid, zeroline=False)
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+for _font in ("Malgun Gothic", "AppleGothic", "NanumGothic"):
+    try:
+        plt.rcParams["font.family"] = _font
+        break
+    except Exception:
+        pass
+plt.rcParams["axes.unicode_minus"] = False
 
 
 @st.cache_resource
 def get_model():
     return build_model()
+
+
+def _show_fig(fig) -> None:
+    fig.tight_layout()
+    st.pyplot(fig, use_container_width=True)
+    plt.close(fig)
 
 
 def render_matchup_hero(ta, tb, pred, labels, id_a, id_b):
@@ -79,15 +74,15 @@ def render_matchup_hero(ta, tb, pred, labels, id_a, id_b):
         f"""
         <style>
         .wbc-card {{
-            border: 1px solid rgba(250,250,250,0.15);
+            border: 1px solid rgba(128,128,128,0.25);
             border-radius: 12px;
             padding: 1.2rem 1.5rem;
-            background: linear-gradient(135deg, rgba(31,119,180,0.12), rgba(255,75,75,0.08));
+            background: linear-gradient(135deg, rgba(31,119,180,0.10), rgba(255,75,75,0.06));
             margin-bottom: 0.5rem;
         }}
         .wbc-winner {{
             font-size: 0.85rem;
-            color: #7dd3fc;
+            color: #1f77b4;
             letter-spacing: 0.04em;
             margin-bottom: 0.25rem;
         }}
@@ -108,7 +103,7 @@ def render_matchup_hero(ta, tb, pred, labels, id_a, id_b):
             justify-content: center;
             font-size: 1.1rem;
             font-weight: 700;
-            color: rgba(250,250,250,0.55);
+            color: rgba(128,128,128,0.7);
             padding-top: 2.5rem;
         }}
         </style>
@@ -137,77 +132,55 @@ def render_matchup_hero(ta, tb, pred, labels, id_a, id_b):
         )
         st.progress(win_b, text=f"승률 {win_b * 100:.1f}%")
 
-    fig = go.Figure()
-    fig.add_trace(
-        go.Bar(
-            y=[labels[id_a], labels[id_b]],
-            x=[win_a * 100, win_b * 100],
-            orientation="h",
-            marker_color=[color_a, color_b],
-            text=[f"{win_a * 100:.1f}%", f"{win_b * 100:.1f}%"],
-            textposition="inside",
-            insidetextanchor="middle",
-            hovertemplate="%{y}<br>승률 %{x:.1f}%<extra></extra>",
-        )
+    win_df = pd.DataFrame(
+        {"승률 (%)": [win_a * 100, win_b * 100]},
+        index=[labels[id_a], labels[id_b]],
     )
-    fig.update_layout(
-        title="최종 승률 비교",
-        xaxis_title="승률 (%)",
-        xaxis=dict(range=[0, 100]),
-        showlegend=False,
-        height=200,
-    )
-    _streamlit_plot(fig, height=200)
+    st.caption("최종 승률 비교")
+    st.bar_chart(win_df, horizontal=True, color=["#1f77b4", "#ff4b4b"])
 
 
 def plot_lineup_strength(power, team_name: str, team_id: str):
-    df = pd.DataFrame(
-        {
-            "선수": [f"{s.order}번 {s.name}" for s in power.lineup],
-            "전력": [s.score for s in power.lineup],
-        }
-    )
+    names = [f"{s.order}번 {s.name}" for s in power.lineup]
+    vals = [s.score for s in power.lineup]
     color = TEAM_COLORS.get(team_id, "#58a6ff")
-    fig = px.bar(
-        df,
-        x="전력",
-        y="선수",
-        orientation="h",
-        title=f"{team_name} 추천 라인업 전력",
-        color_discrete_sequence=[color],
-    )
-    fig.update_layout(yaxis=dict(categoryorder="total ascending"))
-    _streamlit_plot(fig, height=300)
+
+    fig, ax = plt.subplots(figsize=(8, 3.5))
+    y_pos = np.arange(len(names))
+    ax.barh(y_pos, vals, color=color, alpha=0.85, edgecolor="#333", linewidth=0.4)
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(names)
+    ax.invert_yaxis()
+    ax.set_xlabel("전력 점수")
+    ax.set_title(f"{team_name} 추천 라인업 전력")
+    _show_fig(fig)
 
 
 def plot_win_factors(pred, name_a: str, name_b: str):
     labels = ["타선", "투수", "종합", "예상 득점(λ)"]
-    df = pd.DataFrame(
-        {
-            "항목": labels * 2,
-            "값": [
-                pred.power_a.lineup_strength,
-                pred.power_a.pitching_strength,
-                pred.power_a.overall,
-                pred.lambda_a,
-                pred.power_b.lineup_strength,
-                pred.power_b.pitching_strength,
-                pred.power_b.overall,
-                pred.lambda_b,
-            ],
-            "팀": [name_a] * 4 + [name_b] * 4,
-        }
-    )
-    fig = px.bar(
-        df,
-        x="항목",
-        y="값",
-        color="팀",
-        barmode="group",
-        title="승률 요인 비교 (포아송 λ 포함)",
-        color_discrete_map={name_a: "#58a6ff", name_b: "#f85149"},
-    )
-    _streamlit_plot(fig, height=340)
+    a_vals = [
+        pred.power_a.lineup_strength,
+        pred.power_a.pitching_strength,
+        pred.power_a.overall,
+        pred.lambda_a,
+    ]
+    b_vals = [
+        pred.power_b.lineup_strength,
+        pred.power_b.pitching_strength,
+        pred.power_b.overall,
+        pred.lambda_b,
+    ]
+    x = np.arange(len(labels))
+    w = 0.35
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+    ax.bar(x - w / 2, a_vals, w, label=name_a, color="#58a6ff")
+    ax.bar(x + w / 2, b_vals, w, label=name_b, color="#f85149")
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels)
+    ax.legend()
+    ax.set_title("승률 요인 비교 (포아송 λ 포함)")
+    _show_fig(fig)
 
 
 def plot_poisson_heatmap(pred):
@@ -219,16 +192,13 @@ def plot_poisson_heatmap(pred):
         for j in range(8):
             grid[i, j] = poisson_pmf(i, lam_a) * poisson_pmf(j, lam_b)
 
-    fig = px.imshow(
-        grid,
-        x=[str(i) for i in range(8)],
-        y=[str(i) for i in range(8)],
-        color_continuous_scale="Viridis",
-        labels=dict(x="B팀 득점", y="A팀 득점", color="확률"),
-        title="득점 조합 확률 (포아송)",
-        aspect="auto",
-    )
-    _streamlit_plot(fig, height=380)
+    fig, ax = plt.subplots(figsize=(6, 5))
+    im = ax.imshow(grid, cmap="viridis", origin="lower")
+    ax.set_xlabel("B팀 득점")
+    ax.set_ylabel("A팀 득점")
+    ax.set_title("득점 조합 확률 (포아송)")
+    plt.colorbar(im, ax=ax, fraction=0.046)
+    _show_fig(fig)
 
 
 def main():
@@ -404,18 +374,10 @@ def main():
             c1.metric("우승 최유력", top_team["팀"])
             c2.metric("우승 확률", f"{top_team['우승 확률 (%)']:.1f}%")
 
-            fig = px.bar(
-                champ_df,
-                x="우승 확률 (%)",
-                y="팀",
-                orientation="h",
-                title="2026 WBC 우승 확률",
-                color="우승 확률 (%)",
-                color_continuous_scale="Blues",
+            st.bar_chart(
+                champ_df.set_index("팀")["우승 확률 (%)"],
+                horizontal=True,
             )
-            fig.update_layout(yaxis=dict(categoryorder="total ascending"), showlegend=False)
-            _streamlit_plot(fig, height=360)
-
             st.dataframe(champ_df, hide_index=True, use_container_width=True)
 
             st.subheader("8강 대진")
@@ -464,15 +426,7 @@ def main():
             }
         )
         st.dataframe(football, hide_index=True, use_container_width=True)
-        fig = px.bar(
-            football,
-            x="국가",
-            y="λ(골)",
-            title="월드컵 골 기대값 (데모)",
-            color="λ(골)",
-            color_continuous_scale="Greens",
-        )
-        _streamlit_plot(fig, height=300)
+        st.bar_chart(football.set_index("국가")["λ(골)"])
         st.caption("동일한 포아송+MC 프레임워크에 xG 기반 접근을 적용하면 월드컵 모듈이 완성됩니다.")
 
 
