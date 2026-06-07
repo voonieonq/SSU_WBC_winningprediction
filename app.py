@@ -8,6 +8,8 @@ import matplotlib
 
 matplotlib.use("Agg")
 
+import koreanize_matplotlib  # noqa: F401 — 나눔고딕 등록 (로컬·Streamlit Cloud 공통)
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -41,15 +43,6 @@ TEAM_COLORS = {
     "aus": "#FFCD00",
     "cub": "#002A8F",
 }
-
-for _font in ("Malgun Gothic", "AppleGothic", "NanumGothic"):
-    try:
-        plt.rcParams["font.family"] = _font
-        break
-    except Exception:
-        pass
-plt.rcParams["axes.unicode_minus"] = False
-
 
 def _theme() -> dict:
     light = st.get_option("theme.base") == "light"
