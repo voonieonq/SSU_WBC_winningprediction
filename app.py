@@ -62,6 +62,34 @@ def _show_fig(fig) -> None:
     plt.close(fig)
 
 
+def plot_win_prob_compare(name_a: str, name_b: str, win_a: float, win_b: float, color_a: str, color_b: str):
+    teams = [name_a, name_b]
+    probs = [win_a * 100, win_b * 100]
+    colors = [color_a, color_b]
+
+    fig, ax = plt.subplots(figsize=(8, 1.6))
+    y_pos = np.arange(len(teams))
+    bars = ax.barh(y_pos, probs, color=colors, height=0.55, edgecolor="#333", linewidth=0.4)
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(teams)
+    ax.invert_yaxis()
+    ax.set_xlim(0, 100)
+    ax.set_xlabel("승률 (%)")
+    ax.set_title("최종 승률 비교")
+    for bar, prob in zip(bars, probs):
+        ax.text(
+            bar.get_width() - 1.5,
+            bar.get_y() + bar.get_height() / 2,
+            f"{prob:.1f}%",
+            va="center",
+            ha="right",
+            color="white",
+            fontweight="bold",
+            fontsize=11,
+        )
+    _show_fig(fig)
+
+
 def render_matchup_hero(ta, tb, pred, labels, id_a, id_b):
     """승률을 한눈에 파악할 수 있는 메인 카드."""
     win_a = pred.win_prob_a
@@ -132,12 +160,7 @@ def render_matchup_hero(ta, tb, pred, labels, id_a, id_b):
         )
         st.progress(win_b, text=f"승률 {win_b * 100:.1f}%")
 
-    win_df = pd.DataFrame(
-        {"승률 (%)": [win_a * 100, win_b * 100]},
-        index=[labels[id_a], labels[id_b]],
-    )
-    st.caption("최종 승률 비교")
-    st.bar_chart(win_df, horizontal=True, color=["#1f77b4", "#ff4b4b"])
+    plot_win_prob_compare(labels[id_a], labels[id_b], win_a, win_b, color_a, color_b)
 
 
 def plot_lineup_strength(power, team_name: str, team_id: str):
